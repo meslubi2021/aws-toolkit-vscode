@@ -55,6 +55,3 @@ We want your feedback!
 -   [File an issue](https://github.com/aws/aws-toolkit-vscode/issues/new?labels=bug&template=bug_report.md)
 -   Or [send a pull request](CONTRIBUTING.md)!
 
-## License
-
-This project and the subprojects within **(AWS Toolkit for Visual Studio Code, Amazon Q for Visual Studio Code)** is distributed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
