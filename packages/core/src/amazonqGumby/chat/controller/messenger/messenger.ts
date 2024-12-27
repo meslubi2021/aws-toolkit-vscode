@@ -45,7 +45,6 @@ export type UnrecoverableErrorType =
     | 'no-maven-java-project-found'
     | 'could-not-compile-project'
     | 'invalid-java-home'
-    | 'unsupported-source-jdk-version'
     | 'upload-to-s3-failed'
     | 'job-start-failed'
     | 'unsupported-source-db'
@@ -198,13 +197,13 @@ export class Messenger {
         const projectFormOptions: { value: any; label: string }[] = []
         const detectedJavaVersions = new Array<JDKVersion | undefined>()
 
-        projects.forEach((candidateProject) => {
+        for (const candidateProject of projects) {
             projectFormOptions.push({
                 value: candidateProject.path,
                 label: candidateProject.name,
             })
             detectedJavaVersions.push(candidateProject.JDKVersion)
-        })
+        }
 
         const formItems: ChatItemFormItem[] = []
         formItems.push({
@@ -234,10 +233,6 @@ export class Messenger {
                     value: JDKVersion.JDK17,
                     label: JDKVersion.JDK17,
                 },
-                {
-                    value: JDKVersion.UNSUPPORTED,
-                    label: 'Other',
-                },
             ],
         })
 
@@ -257,7 +252,7 @@ export class Messenger {
         this.dispatcher.sendAsyncEventProgress(
             new AsyncEventProgressMessage(tabID, {
                 inProgress: true,
-                message: MessengerUtils.createLanguageUpgradeConfirmationPrompt(detectedJavaVersions),
+                message: CodeWhispererConstants.projectPromptChatMessage,
             })
         )
 
@@ -284,12 +279,12 @@ export class Messenger {
     public async sendSQLConversionProjectPrompt(projects: TransformationCandidateProject[], tabID: string) {
         const projectFormOptions: { value: any; label: string }[] = []
 
-        projects.forEach((candidateProject) => {
+        for (const candidateProject of projects) {
             projectFormOptions.push({
                 value: candidateProject.path,
                 label: candidateProject.name,
             })
-        })
+        }
 
         const formItems: ChatItemFormItem[] = []
         formItems.push({
@@ -472,9 +467,6 @@ export class Messenger {
                 break
             case 'invalid-java-home':
                 message = CodeWhispererConstants.noJavaHomeFoundChatMessage
-                break
-            case 'unsupported-source-jdk-version':
-                message = CodeWhispererConstants.unsupportedJavaVersionChatMessage
                 break
             case 'unsupported-source-db':
                 message = CodeWhispererConstants.invalidMetadataFileUnsupportedSourceDB
@@ -669,12 +661,12 @@ ${codeSnippet}
 
         const valueFormOptions: { value: any; label: string }[] = []
 
-        versions.allVersions.forEach((version) => {
+        for (const version of versions.allVersions) {
             valueFormOptions.push({
                 value: version,
                 label: version,
             })
-        })
+        }
 
         const formItems: ChatItemFormItem[] = []
         formItems.push({
