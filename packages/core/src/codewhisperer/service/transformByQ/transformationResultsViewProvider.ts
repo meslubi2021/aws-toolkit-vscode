@@ -21,12 +21,12 @@ import { ExportResultArchiveStructure, downloadExportResultArchive } from '../..
 import { getLogger } from '../../../shared/logger'
 import { telemetry } from '../../../shared/telemetry/telemetry'
 import { CodeTransformTelemetryState } from '../../../amazonqGumby/telemetry/codeTransformTelemetryState'
-import { MetadataResult } from '../../../shared/telemetry/telemetryClient'
 import * as CodeWhispererConstants from '../../models/constants'
 import { createCodeWhispererChatStreamingClient } from '../../../shared/clients/codewhispererChatClient'
 import { ChatSessionManager } from '../../../amazonqGumby/chat/storages/chatSession'
 import { setContext } from '../../../shared/vscode/setContext'
 import * as codeWhisperer from '../../client/codewhisperer'
+import { UserWrittenCodeTracker } from '../../tracker/userWrittenCodeTracker'
 
 export abstract class ProposedChangeNode {
     abstract readonly resourcePath: string
@@ -178,6 +178,7 @@ export class DiffModel {
         }
 
         const changedFiles = parsePatch(diffContents)
+        getLogger().info('CodeTransformation: parsed patch file successfully')
         // path to the directory containing copy of the changed files in the transformed project
         const pathToTmpSrcDir = this.copyProject(pathToWorkspace, changedFiles)
         transformByQState.setProjectCopyFilePath(pathToTmpSrcDir)
@@ -365,12 +366,11 @@ export class ProposedTransformationExplorer {
         })
 
         vscode.commands.registerCommand('aws.amazonq.transformationHub.summary.reveal', async () => {
-            if (transformByQState.getSummaryFilePath() !== '') {
+            if (fs.existsSync(transformByQState.getSummaryFilePath())) {
                 await vscode.commands.executeCommand(
                     'markdown.showPreview',
                     vscode.Uri.file(transformByQState.getSummaryFilePath())
                 )
-                telemetry.ui_click.emit({ elementId: 'transformationHub_viewSummary' })
             }
         })
 
@@ -403,6 +403,7 @@ export class ProposedTransformationExplorer {
                         pathToArchive
                     )
 
+                    getLogger().info('CodeTransformation: downloaded results successfully')
                     // Update downloaded artifact size
                     exportResultsArchiveSize = (await fs.promises.stat(pathToArchive)).size
 
@@ -426,6 +427,7 @@ export class ProposedTransformationExplorer {
                 throw new Error('Error downloading diff')
             } finally {
                 cwStreamingClient.destroy()
+                UserWrittenCodeTracker.instance.onQFeatureInvoked()
             }
 
             let deserializeErrorMessage = undefined
@@ -533,11 +535,14 @@ export class ProposedTransformationExplorer {
         })
 
         vscode.commands.registerCommand('aws.amazonq.transformationHub.reviewChanges.acceptChanges', async () => {
-            diffModel.saveChanges()
-            telemetry.codeTransform_submitSelection.emit({
-                codeTransformSessionId: CodeTransformTelemetryState.instance.getSessionId(),
-                codeTransformJobId: transformByQState.getJobId(),
-                userChoice: `acceptChanges-${patchFilesDescriptions?.content[diffModel.currentPatchIndex].name}`,
+            telemetry.codeTransform_submitSelection.run(() => {
+                getLogger().info('CodeTransformation: accepted changes')
+                diffModel.saveChanges()
+                telemetry.record({
+                    codeTransformSessionId: CodeTransformTelemetryState.instance.getSessionId(),
+                    codeTransformJobId: transformByQState.getJobId(),
+                    userChoice: `acceptChanges-${patchFilesDescriptions?.content[diffModel.currentPatchIndex].name}`,
+                })
             })
             if (transformByQState.getMultipleDiffs()) {
                 void vscode.window.showInformationMessage(
@@ -581,34 +586,21 @@ export class ProposedTransformationExplorer {
                 // All patches have been applied, reset the state
                 await reset()
             }
-
-            telemetry.codeTransform_viewArtifact.emit({
-                codeTransformArtifactType: 'ClientInstructions',
-                codeTransformVCSViewerSrcComponents: 'toastNotification',
-                codeTransformSessionId: CodeTransformTelemetryState.instance.getSessionId(),
-                codeTransformJobId: transformByQState.getJobId(),
-                codeTransformStatus: transformByQState.getStatus(),
-                userChoice: 'Submit',
-                result: MetadataResult.Pass,
-            })
         })
 
         vscode.commands.registerCommand('aws.amazonq.transformationHub.reviewChanges.rejectChanges', async () => {
-            diffModel.rejectChanges()
-            await reset()
-
+            await telemetry.codeTransform_submitSelection.run(async () => {
+                getLogger().info('CodeTransformation: rejected changes')
+                diffModel.rejectChanges()
+                await reset()
+                telemetry.record({
+                    codeTransformSessionId: CodeTransformTelemetryState.instance.getSessionId(),
+                    codeTransformJobId: transformByQState.getJobId(),
+                    userChoice: 'rejectChanges',
+                })
+            })
             transformByQState.getChatControllers()?.transformationFinished.fire({
                 tabID: ChatSessionManager.Instance.getSession().tabID,
-            })
-
-            telemetry.codeTransform_viewArtifact.emit({
-                codeTransformArtifactType: 'ClientInstructions',
-                codeTransformVCSViewerSrcComponents: 'toastNotification',
-                codeTransformSessionId: CodeTransformTelemetryState.instance.getSessionId(),
-                codeTransformJobId: transformByQState.getJobId(),
-                codeTransformStatus: transformByQState.getStatus(),
-                userChoice: 'Cancel',
-                result: MetadataResult.Pass,
             })
         })
     }
